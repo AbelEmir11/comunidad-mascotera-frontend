@@ -5,7 +5,7 @@ Plataforma web comunitaria desarrollada para conectar refugios de animales en Me
 > 🎓 **Proyecto Universitario / Académico:**  
 > Este repositorio corresponde a la capa cliente (**Frontend**) bajo una arquitectura desacoplada (*Decoupled Client-Server Architecture*).  
 > La API REST y la lógica de negocio persistente se encuentran en el repositorio hermano:  
-> 👉 **[comunidad-mascotera-backend](https://github.com/TU_USUARIO/comunidad-mascotera-backend)** (Java Spring Boot 3 + H2 Database).
+> 👉 **[comunidad-mascotera-backend](https://github.com/AbelEmir11/Comunidad-mascotera-backend)** (Java Spring Boot 3 + H2 Database).
 
 ---
 
