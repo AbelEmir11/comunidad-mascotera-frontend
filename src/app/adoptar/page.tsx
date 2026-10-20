@@ -1,24 +1,30 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { MOCK_PETS } from '@/data/mockData';
+import { useState, useEffect, useCallback } from 'react';
+import { Pet } from '@/types';
+import { fetchAnimals } from '@/services/api';
 import PetCard from '@/components/PetCard';
 import PetCompatibilityModal from '@/components/PetCompatibilityModal';
 import { 
   Dog, 
-  Cat, 
   Sparkles, 
   Search, 
   Filter, 
   Building, 
   Users, 
-  RotateCcw,
-  Heart
+  RotateCcw, 
+  Heart,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 const FAVORITES_KEY = 'comunidad_mascotera_favoritos';
 
 export default function AdoptarPage() {
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [species, setSpecies] = useState<'todos' | 'perro' | 'gato'>('todos');
@@ -28,6 +34,24 @@ export default function AdoptarPage() {
   const [onlyUrgent, setOnlyUrgent] = useState(false);
   const [onlyFavorites, setOnlyFavorites] = useState(false);
   const [favorites, setFavorites] = useState<string[]>([]);
+
+  const loadAnimals = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchAnimals();
+      setPets(data);
+    } catch (err: unknown) {
+      console.error('Error al consultar animales:', err);
+      setError('No pudimos conectar con el servidor backend. Verificá que la API de Spring Boot esté en ejecución en http://localhost:8080.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAnimals();
+  }, [loadAnimals]);
 
   useEffect(() => {
     try {
@@ -40,13 +64,13 @@ export default function AdoptarPage() {
     }
   }, []);
 
-  const filteredPets = MOCK_PETS.filter((pet) => {
+  const filteredPets = pets.filter((pet) => {
     // Búsqueda por nombre o refugio
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
       const matchName = pet.name.toLowerCase().includes(term);
-      const matchShelter = pet.shelterName.toLowerCase().includes(term);
-      const matchLocation = pet.shelterLocation.toLowerCase().includes(term);
+      const matchShelter = pet.shelterName?.toLowerCase().includes(term) ?? false;
+      const matchLocation = pet.shelterLocation?.toLowerCase().includes(term) ?? false;
       if (!matchName && !matchShelter && !matchLocation) return false;
     }
 
@@ -222,44 +246,107 @@ export default function AdoptarPage() {
 
       </div>
 
-      {/* Resultados */}
+      {/* Sección de Resultados */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between text-xs text-stone-500 font-medium px-1">
-          <span>Mostrando {filteredPets.length} animales disponibles</span>
-          <span>Actualizado en tiempo real</span>
-        </div>
-
-        {filteredPets.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredPets.map((pet) => (
-              <PetCard 
-                key={pet.id} 
-                pet={pet} 
-                onFavoriteToggle={(id, isFav) => {
-                  setFavorites(prev => isFav ? [...prev, id] : prev.filter(fId => fId !== id));
-                }}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="bg-white rounded-3xl p-12 text-center border border-stone-100 space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
-              <Dog className="w-7 h-7" />
+        
+        {/* Estado de Carga */}
+        {isLoading && (
+          <div className="space-y-6">
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+              <RefreshCw className="w-4 h-4 animate-spin text-amber-600" />
+              <span>Consultando catálogo de animales en tiempo real al servidor backend...</span>
             </div>
-            <h3 className="text-lg font-bold text-stone-900">
-              No encontramos animalitos con esos filtros
-            </h3>
-            <p className="text-xs text-stone-500 max-w-sm mx-auto">
-              Probá flexibilizar los filtros de tamaño o especie para ver más compañeros rescatados.
-            </p>
-            <button
-              onClick={resetFilters}
-              className="bg-stone-900 hover:bg-amber-500 hover:text-stone-950 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors"
-            >
-              Restablecer filtros
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="bg-white rounded-3xl p-5 border border-stone-100 shadow-xs animate-pulse space-y-4">
+                  <div className="w-full h-52 bg-stone-200 rounded-2xl" />
+                  <div className="h-5 bg-stone-200 rounded-md w-2/3" />
+                  <div className="h-3 bg-stone-200 rounded-md w-1/2" />
+                  <div className="flex gap-2">
+                    <div className="h-6 bg-stone-200 rounded-lg w-16" />
+                    <div className="h-6 bg-stone-200 rounded-lg w-20" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
+        {/* Estado de Error de Conexión */}
+        {!isLoading && error && (
+          <div className="bg-rose-50 border border-rose-200 rounded-3xl p-8 sm:p-10 text-center space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-bold text-rose-950">
+              Error de conexión con el backend
+            </h3>
+            <p className="text-xs text-rose-700 max-w-md mx-auto leading-relaxed">
+              {error}
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={loadAnimals}
+                className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-sm active:scale-95 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reintentar conexión</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Resultados Exitosos */}
+        {!isLoading && !error && (
+          <>
+            <div className="flex items-center justify-between text-xs text-stone-500 font-medium px-1">
+              <span>Mostrando {filteredPets.length} animales disponibles</span>
+              <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-ping" />
+                Sincronizado con API Backend
+              </span>
+            </div>
+
+            {filteredPets.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredPets.map((pet) => (
+                  <PetCard 
+                    key={pet.id} 
+                    pet={pet} 
+                    onFavoriteToggle={(id, isFav) => {
+                      setFavorites(prev => isFav ? [...prev, id] : prev.filter(fId => fId !== id));
+                    }}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-3xl p-12 text-center border border-stone-100 space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto">
+                  <Dog className="w-7 h-7" />
+                </div>
+                <h3 className="text-lg font-bold text-stone-900">
+                  {pets.length === 0
+                    ? 'No hay animales registrados en el backend'
+                    : 'No encontramos animalitos con esos filtros'}
+                </h3>
+                <p className="text-xs text-stone-500 max-w-sm mx-auto">
+                  {pets.length === 0
+                    ? 'El backend respondió correctamente, pero la base de datos no contiene mascotas activas.'
+                    : 'Probá flexibilizar los filtros de tamaño o especie para ver más compañeros rescatados.'}
+                </p>
+                {pets.length > 0 && (
+                  <button
+                    onClick={resetFilters}
+                    className="bg-stone-900 hover:bg-amber-500 hover:text-stone-950 text-white font-bold text-xs px-5 py-2.5 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Restablecer filtros
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
       </div>
 
       {/* Modal del Test */}

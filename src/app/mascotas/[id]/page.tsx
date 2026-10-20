@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, useEffect, useCallback, use } from 'react';
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
-import { MOCK_PETS, MOCK_SHELTERS } from '@/data/mockData';
-import { submitAdoptionApplication } from '@/services/api';
+import { MOCK_SHELTERS } from '@/data/mockData';
+import { fetchAnimalById, submitAdoptionApplication } from '@/services/api';
+import { Pet } from '@/types';
 import { 
   ArrowLeft, 
   MapPin, 
@@ -18,12 +18,19 @@ import {
   MessageCircle, 
   Sparkles, 
   X,
-  Check
+  Check,
+  Dog,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 
 export default function PetDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
-  const pet = MOCK_PETS.find((p) => p.id === resolvedParams.id);
+
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [notFoundState, setNotFoundState] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [activePhoto, setActivePhoto] = useState(0);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
@@ -38,11 +45,28 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
   const [formErrors, setFormErrors] = useState<{ dni?: string; phone?: string; name?: string }>({});
 
-  if (!pet) {
-    notFound();
-  }
+  const loadPet = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    setNotFoundState(false);
+    try {
+      const data = await fetchAnimalById(resolvedParams.id);
+      if (!data) {
+        setNotFoundState(true);
+      } else {
+        setPet(data);
+      }
+    } catch (err: unknown) {
+      console.error('Error al consultar el detalle de la mascota:', err);
+      setError('No pudimos conectar con el servidor backend. Verificá que la API de Spring Boot esté en ejecución.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [resolvedParams.id]);
 
-  const shelter = MOCK_SHELTERS.find((s) => s.id === pet.shelterId) || MOCK_SHELTERS[0];
+  useEffect(() => {
+    loadPet();
+  }, [loadPet]);
 
   const handleDniChange = (val: string) => {
     // Solo números, máximo 8 dígitos
@@ -67,6 +91,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
   };
 
   const handleShare = () => {
+    if (!pet) return;
     if (navigator.share) {
       navigator.share({
         title: `Conocé a ${pet.name} en Comunidad Mascotera`,
@@ -82,6 +107,8 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!pet) return;
+
     const errors: { dni?: string; phone?: string; name?: string } = {};
 
     if (!applicantName.trim()) {
@@ -109,6 +136,98 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
     setApplicationSubmitted(true);
   };
 
+  // 1. Estado de carga
+  if (isLoading) {
+    return (
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-16 space-y-8 animate-pulse">
+        <div className="h-9 bg-stone-200 rounded-xl w-40" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div className="lg:col-span-7 space-y-4">
+            <div className="aspect-4/3 bg-stone-200 rounded-3xl w-full" />
+            <div className="h-20 bg-stone-200 rounded-3xl w-full" />
+          </div>
+          <div className="lg:col-span-5 space-y-4">
+            <div className="h-8 bg-stone-200 rounded-lg w-3/4" />
+            <div className="h-4 bg-stone-200 rounded-md w-1/2" />
+            <div className="h-32 bg-stone-200 rounded-2xl w-full" />
+            <div className="h-12 bg-stone-200 rounded-xl w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Estado de animal inexistente (404)
+  if (notFoundState) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-5">
+        <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-inner">
+          <Dog className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight">
+            Mascota no encontrada
+          </h1>
+          <p className="text-xs sm:text-sm text-stone-600 leading-relaxed max-w-md mx-auto">
+            No encontramos ningún animal registrado con el identificador <code className="bg-stone-100 px-2 py-0.5 rounded-md font-mono text-amber-700 font-bold">{resolvedParams.id}</code> en el servidor. Pudo haber sido adoptado o el enlace no es válido.
+          </p>
+        </div>
+        <div className="pt-2">
+          <Link
+            href="/adoptar"
+            className="inline-flex items-center gap-2 bg-stone-900 hover:bg-amber-500 hover:text-stone-950 text-white font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-sm"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Volver al catálogo de adopción</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Estado de error de conexión con el backend
+  if (error || !pet) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center space-y-5">
+        <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto shadow-inner">
+          <AlertTriangle className="w-8 h-8" />
+        </div>
+        <div className="space-y-2">
+          <h1 className="text-2xl sm:text-3xl font-black text-rose-950 tracking-tight">
+            Error de conexión con el backend
+          </h1>
+          <p className="text-xs sm:text-sm text-rose-700 leading-relaxed max-w-md mx-auto">
+            {error || 'No fue posible obtener los datos de la mascota desde la API.'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          <button
+            onClick={loadPet}
+            className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-6 py-3 rounded-xl transition-all shadow-sm cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Reintentar conexión</span>
+          </button>
+          <Link
+            href="/adoptar"
+            className="inline-flex items-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs px-5 py-3 rounded-xl transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Volver al catálogo</span>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const shelter = MOCK_SHELTERS.find((s) => s.id === pet.shelterId) || {
+    id: pet.shelterId,
+    name: pet.shelterName || 'Refugio Asociado',
+    location: pet.shelterLocation || 'Mendoza, Argentina',
+    logo: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=200&q=80',
+    whatsapp: '5492615554321',
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8">
       
@@ -124,7 +243,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
 
         <button
           onClick={handleShare}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-950 bg-white border border-stone-200 px-3.5 py-2 rounded-xl transition-colors shadow-2xs"
+          className="inline-flex items-center gap-1.5 text-xs font-bold text-stone-700 hover:text-stone-950 bg-white border border-stone-200 px-3.5 py-2 rounded-xl transition-colors shadow-2xs cursor-pointer"
         >
           <Share2 className="w-3.5 h-3.5 text-amber-600" />
           <span>{shared ? '¡Enlace copiado!' : 'Compartir ficha'}</span>
@@ -156,7 +275,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
                 <button
                   key={idx}
                   onClick={() => setActivePhoto(idx)}
-                  className={`w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all ${
+                  className={`w-20 h-20 rounded-2xl overflow-hidden border-2 transition-all cursor-pointer ${
                     activePhoto === idx ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-stone-200 opacity-70 hover:opacity-100'
                   }`}
                 >
@@ -220,124 +339,135 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
             </p>
           </div>
 
-          {/* Personality tags */}
-          <div className="flex flex-wrap gap-1.5">
-            {pet.traits.map((t, idx) => (
+          {/* Rasgos / Etiquetas */}
+          <div className="flex flex-wrap gap-2">
+            {pet.traits.map((trait, idx) => (
               <span
                 key={idx}
-                className="text-xs font-semibold bg-stone-100 text-stone-700 px-3 py-1 rounded-xl"
+                className="inline-flex items-center gap-1 text-xs font-semibold bg-stone-100 text-stone-800 px-3 py-1 rounded-xl"
               >
-                {t}
+                <Sparkles className="w-3 h-3 text-amber-500" />
+                {trait}
               </span>
             ))}
           </div>
 
-          {/* Story */}
-          <div className="space-y-2 bg-white rounded-3xl p-5 border border-stone-100 shadow-xs">
-            <h3 className="font-extrabold text-sm text-stone-900">Su Historia:</h3>
-            <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
+          {/* Historia */}
+          <div className="bg-white rounded-3xl p-5 sm:p-6 border border-stone-100 shadow-xs space-y-2">
+            <h3 className="font-extrabold text-stone-900 text-sm">
+              Su Historia de Rescate
+            </h3>
+            <p className="text-xs text-stone-600 leading-relaxed">
               {pet.story}
             </p>
           </div>
 
-          {/* Compatibility Radar */}
-          <div className="bg-white rounded-3xl p-5 border border-stone-100 shadow-xs space-y-3">
-            <h3 className="font-extrabold text-sm text-stone-900">Compatibilidad con el Hogar:</h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                pet.compatibility.apartment ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900' : 'bg-stone-50 border-stone-200 text-stone-500'
-              }`}>
-                <Building className="w-4 h-4 text-emerald-600" />
-                <span>{pet.compatibility.apartment ? 'Apto Departamento' : 'Requiere Patio'}</span>
-              </div>
-
-              <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                pet.compatibility.kids ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900' : 'bg-stone-50 border-stone-200 text-stone-500'
-              }`}>
-                <Users className="w-4 h-4 text-emerald-600" />
-                <span>{pet.compatibility.kids ? 'Sociable con Chicos' : 'Hogar sin niños'}</span>
-              </div>
-
-              <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                pet.compatibility.cats ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900' : 'bg-stone-50 border-stone-200 text-stone-500'
-              }`}>
-                <span>🐱</span>
-                <span>{pet.compatibility.cats ? 'Acepta Gatos' : 'Sin gatos'}</span>
-              </div>
-
-              <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
-                pet.compatibility.otherDogs ? 'bg-emerald-50/60 border-emerald-200 text-emerald-900' : 'bg-stone-50 border-stone-200 text-stone-500'
-              }`}>
-                <span>🐶</span>
-                <span>{pet.compatibility.otherDogs ? 'Acepta otros Perros' : 'Perro único'}</span>
-              </div>
-            </div>
-
-            <div className="pt-1 flex items-center justify-between text-xs text-stone-500">
-              <span className="flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-amber-500" />
-                Nivel de energía: <strong className="capitalize text-stone-700">{pet.compatibility.energyLevel}</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Health Passport */}
-          <div className="bg-emerald-50/40 rounded-3xl p-5 border border-emerald-200/60 space-y-3">
+          {/* Pasaporte Sanitario Didáctico */}
+          <div className="bg-emerald-50/60 rounded-3xl p-5 border border-emerald-100 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-extrabold text-sm text-emerald-950 flex items-center gap-1.5">
+              <h3 className="font-extrabold text-emerald-950 text-xs uppercase tracking-wider flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                Pasaporte Sanitario & Vacunación
+                Pasaporte Sanitario Oficial
               </h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
-                Verificado
+              <span className="text-[10px] font-bold bg-emerald-200/60 text-emerald-800 px-2 py-0.5 rounded-md">
+                Garantía Veterinaria
               </span>
             </div>
 
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="flex items-center gap-1.5 text-stone-700">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{pet.health.vaccinated ? 'Vacunación al día' : 'Plan en marcha'}</span>
+              <div className="flex items-center gap-2 bg-white/80 p-2.5 rounded-xl border border-emerald-100/60">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 ${pet.health.vaccinated ? 'text-emerald-600' : 'text-stone-300'}`} />
+                <span className="font-medium text-stone-700">
+                  {pet.health.vaccinated ? 'Vacunación al día' : 'Vacunación pendiente'}
+                </span>
               </div>
-              <div className="flex items-center gap-1.5 text-stone-700">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{pet.health.neutered ? 'Castrado/a' : 'Castración incluida'}</span>
+
+              <div className="flex items-center gap-2 bg-white/80 p-2.5 rounded-xl border border-emerald-100/60">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 ${pet.health.neutered ? 'text-emerald-600' : 'text-stone-300'}`} />
+                <span className="font-medium text-stone-700">
+                  {pet.health.neutered ? 'Castrado / Esterilizado' : 'Compromiso de castración'}
+                </span>
               </div>
-              <div className="flex items-center gap-1.5 text-stone-700">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{pet.health.dewormed ? 'Desparasitado/a' : 'Desparasitación ok'}</span>
+
+              <div className="flex items-center gap-2 bg-white/80 p-2.5 rounded-xl border border-emerald-100/60">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 ${pet.health.dewormed ? 'text-emerald-600' : 'text-stone-300'}`} />
+                <span className="font-medium text-stone-700">
+                  {pet.health.dewormed ? 'Desparasitado int/ext' : 'Desparasitación en curso'}
+                </span>
               </div>
-              <div className="flex items-center gap-1.5 text-stone-700">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Libreta sanitaria sellada</span>
+
+              <div className="flex items-center gap-2 bg-white/80 p-2.5 rounded-xl border border-emerald-100/60">
+                <CheckCircle2 className={`w-4 h-4 shrink-0 ${pet.health.microchip ? 'text-emerald-600' : 'text-stone-300'}`} />
+                <span className="font-medium text-stone-700">
+                  {pet.health.microchip ? 'Microchip registrado' : 'Sin microchip'}
+                </span>
               </div>
             </div>
 
             {pet.health.specialCare && (
-              <p className="text-[11px] text-stone-500 italic pt-1 border-t border-emerald-200/60">
-                * {pet.health.specialCare}
+              <p className="text-[11px] text-emerald-800 font-medium bg-emerald-100/50 p-2 rounded-lg">
+                ⚠️ Cuidado especial: {pet.health.specialCare}
               </p>
             )}
           </div>
 
-          {/* Main Adoption CTA Button */}
-          <div className="space-y-3 pt-2">
+          {/* Compatibilidad de Convivencia */}
+          <div className="bg-white rounded-3xl p-5 border border-stone-100 shadow-xs space-y-3">
+            <h3 className="font-extrabold text-stone-900 text-xs uppercase tracking-wider">
+              Compatibilidad con tu Hogar
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-50">
+                <Building className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span className="font-medium text-stone-700">
+                  {pet.compatibility.apartment ? 'Apto departamento' : 'Requiere patio o espacio'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-50">
+                <Users className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span className="font-medium text-stone-700">
+                  {pet.compatibility.kids ? 'Ideal con niños' : 'Prefiere adultos'}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-50">
+                <Zap className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span className="font-medium text-stone-700 capitalize">
+                  Energía {pet.compatibility.energyLevel}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-stone-50">
+                <Heart className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                <span className="font-medium text-stone-700">
+                  {pet.compatibility.otherDogs ? 'Convive con perros' : 'Prefiere ser único can'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Botones de Acción (Postular y WhatsApp Refugio) */}
+          <div className="space-y-2 pt-2">
             <button
               onClick={() => setIsApplyModalOpen(true)}
-              className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 hover:from-amber-600 hover:to-rose-600 text-white font-extrabold text-base py-4 px-6 rounded-2xl shadow-lg shadow-orange-500/20 transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+              className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-sm py-4 rounded-2xl shadow-lg transition-all hover:scale-102 active:scale-98 cursor-pointer"
             >
-              <Heart className="w-5 h-5 fill-white" />
-              <span>Quiero Postularme para Adoptar a {pet.name}</span>
+              Postularme para Adoptar a {pet.name}
             </button>
 
-            <a
-              href={`https://wa.me/${shelter.whatsapp}?text=Hola%20${encodeURIComponent(shelter.name)}!%20Vi%20a%20${encodeURIComponent(pet.name)}%20en%20Comunidad%20Mascotera%20y%20quiero%20hacer%20unas%20consultas.`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full inline-flex items-center justify-center gap-2 bg-white hover:bg-stone-50 text-emerald-700 font-bold text-xs py-3 px-4 rounded-xl border border-emerald-200 transition-colors shadow-2xs"
-            >
-              <MessageCircle className="w-4 h-4 text-emerald-600" />
-              <span>Consultar dudas al refugio por WhatsApp</span>
-            </a>
+            {shelter.whatsapp && (
+              <a
+                href={`https://wa.me/${shelter.whatsapp}?text=Hola!%20Vi%20en%20Comunidad%20Mascotera%20la%20ficha%20de%20${encodeURIComponent(pet.name)}%20y%20me%20gustar%C3%ADa%20hacerles%20una%20consulta.`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full flex items-center justify-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs py-3 rounded-2xl border border-emerald-200 transition-colors"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-600" />
+                <span>Consultar por WhatsApp con el Refugio</span>
+              </a>
+            )}
           </div>
 
         </div>
@@ -346,54 +476,51 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
 
       {/* Modal de Postulación Responsable */}
       {isApplyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-5 shadow-2xl border border-stone-100 relative max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 max-h-[90vh] overflow-y-auto relative animate-in fade-in zoom-in duration-200">
+            
+            {/* Close button */}
             <button
-              onClick={() => {
-                setIsApplyModalOpen(false);
-                setApplicationSubmitted(false);
-              }}
-              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-stone-100 text-stone-400"
+              onClick={() => setIsApplyModalOpen(false)}
+              className="absolute top-5 right-5 p-1 text-stone-400 hover:text-stone-700 rounded-full hover:bg-stone-100 transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
 
             {applicationSubmitted ? (
-              <div className="text-center py-6 space-y-4 animate-in zoom-in-95">
-                <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+              <div className="text-center py-6 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto animate-bounce">
                   <Check className="w-8 h-8" />
                 </div>
-                <h3 className="text-2xl font-black text-stone-900">
-                  ¡Solicitud Enviada con Éxito!
+                <h3 className="text-xl font-black text-stone-900">
+                  ¡Postulación Enviada con Éxito!
                 </h3>
-                <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
-                  Los rescatistas de <strong>{shelter.name}</strong> recibieron tu postulación para <strong>{pet.name}</strong>. Se comunicarán a tu WhatsApp al <strong>{applicantPhone}</strong> en las próximas 24 a 48 horas.
+                <p className="text-xs text-stone-600 leading-relaxed max-w-sm mx-auto">
+                  El equipo de <strong>{shelter.name}</strong> revisará tus datos y se pondrá en contacto por WhatsApp al número provisto ({applicantPhone}) para coordinar una entrevista previa.
                 </p>
-                <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 text-xs text-amber-900 text-left space-y-1">
-                  <strong className="block font-bold">Recordá el compromiso:</strong>
-                  <span>Al concretarse la adopción, se habilitará el <em>Álbum de Vida</em> de {pet.name} para que subas sus primeras fotos del día 15 y mes 1.</span>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setIsApplyModalOpen(false);
+                      setApplicationSubmitted(false);
+                    }}
+                    className="bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs px-6 py-3 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Entendido, ¡muchas gracias!
+                  </button>
                 </div>
-                <button
-                  onClick={() => {
-                    setIsApplyModalOpen(false);
-                    setApplicationSubmitted(false);
-                  }}
-                  className="bg-stone-900 text-white font-bold text-xs px-6 py-3 rounded-xl hover:bg-stone-800 transition-colors"
-                >
-                  Entendido, ¡muchas gracias!
-                </button>
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="space-y-1">
-                  <span className="text-[11px] uppercase font-bold tracking-wider text-amber-600">
-                    Formulario de Adopción Responsable
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-amber-600 tracking-wider">
+                    Formulario Oficial
                   </span>
-                  <h3 className="text-xl font-extrabold text-stone-900">
+                  <h3 className="text-xl font-black text-stone-900 tracking-tight">
                     Postularme para adoptar a {pet.name}
                   </h3>
                   <p className="text-xs text-stone-500">
-                    Este formulario permite al refugio conocer tu entorno antes de concretar la entrevista.
+                    Completá tus datos para que el refugio evalúe la compatibilidad con tu hogar.
                   </p>
                 </div>
 
@@ -507,7 +634,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
                   <button
                     type="submit"
                     disabled={!agreedToFollowup || applicantDni.length < 8 || applicantPhone.length < 8 || !applicantName.trim()}
-                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-sm py-3 rounded-xl shadow-md transition-colors"
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-sm py-3 rounded-xl shadow-md transition-colors cursor-pointer"
                   >
                     Enviar Postulación al Refugio
                   </button>
