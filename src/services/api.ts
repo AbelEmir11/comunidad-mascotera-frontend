@@ -116,18 +116,40 @@ export async function submitAdoptionApplication(animalId: string, payload: {
   applicantHousing: string;
   agreedToFollowup: boolean;
 }) {
+  let res: Response;
   try {
-    const res = await fetch(`${API_BASE_URL}/adopciones/postular/${animalId}`, {
+    res = await fetch(`${API_BASE_URL}/adopciones/postular/${animalId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn('Postulación guardada localmente por fallback:', err);
-    return { success: true, localSaved: true };
+  } catch (networkErr) {
+    throw new Error('No se pudo conectar con el servidor. Verificá que el backend esté en ejecución e intentá nuevamente.');
   }
+
+  if (!res.ok) {
+    let errorDetail = '';
+    try {
+      const errorJson = await res.json();
+      if (errorJson.fieldErrors && typeof errorJson.fieldErrors === 'object') {
+        errorDetail = Object.values(errorJson.fieldErrors).join('. ');
+      } else if (errorJson.message) {
+        errorDetail = errorJson.message;
+      }
+    } catch {
+      // Si la respuesta no es JSON válido
+    }
+
+    if (res.status === 404) {
+      throw new Error(errorDetail || 'El animal seleccionado no fue encontrado en el sistema.');
+    } else if (res.status === 400) {
+      throw new Error(errorDetail || 'Los datos ingresados no cumplen con las validaciones requeridas.');
+    } else {
+      throw new Error(errorDetail || `Error del servidor (código ${res.status}). Por favor, intentá nuevamente.`);
+    }
+  }
+
+  return await res.json();
 }
 
 export async function completeMilestone(hitoId: string, notes: string, photoUrl: string) {

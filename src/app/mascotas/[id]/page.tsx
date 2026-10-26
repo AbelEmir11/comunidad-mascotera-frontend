@@ -18,7 +18,8 @@ import {
   MessageCircle, 
   Sparkles, 
   X,
-  Check
+  Check,
+  AlertCircle
 } from 'lucide-react';
 
 export default function PetDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,6 +37,8 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
   const [applicantHousing, setApplicantHousing] = useState('casa_patio');
   const [agreedToFollowup, setAgreedToFollowup] = useState(true);
   const [applicationSubmitted, setApplicationSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<{ dni?: string; phone?: string; name?: string }>({});
 
   if (!pet) {
@@ -82,6 +85,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     const errors: { dni?: string; phone?: string; name?: string } = {};
 
     if (!applicantName.trim()) {
@@ -99,14 +103,24 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
       return;
     }
 
-    await submitAdoptionApplication(pet.id, {
-      applicantName,
-      applicantDni,
-      applicantPhone,
-      applicantHousing,
-      agreedToFollowup,
-    });
-    setApplicationSubmitted(true);
+    setIsSubmitting(true);
+    try {
+      await submitAdoptionApplication(pet.id, {
+        applicantName,
+        applicantDni,
+        applicantPhone,
+        applicantHousing,
+        agreedToFollowup,
+      });
+      // Confirmación únicamente ante una respuesta exitosa del backend
+      setApplicationSubmitted(true);
+      setSubmitError(null);
+    } catch (err: any) {
+      // En caso de error, explicar el problema, conservar los datos ingresados y permitir intentar nuevamente
+      setSubmitError(err?.message || 'Ocurrió un error al enviar la postulación. Por favor, intentá nuevamente.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -352,6 +366,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
               onClick={() => {
                 setIsApplyModalOpen(false);
                 setApplicationSubmitted(false);
+                setSubmitError(null);
               }}
               className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-stone-100 text-stone-400"
             >
@@ -398,6 +413,21 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
                 </div>
 
                 <form onSubmit={handleApplySubmit} className="space-y-3.5 text-left">
+                  {submitError && (
+                    <div className="bg-rose-50 border border-rose-200 text-rose-800 p-3.5 rounded-2xl text-xs space-y-1 animate-in fade-in">
+                      <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                        <span>No se pudo enviar la postulación</span>
+                      </div>
+                      <p className="text-[11px] leading-relaxed text-rose-700">
+                        {submitError}
+                      </p>
+                      <p className="text-[10px] text-rose-500 font-medium pt-1">
+                        Tus datos se conservaron en el formulario para que puedas corregirlos o reintentar el envío.
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="text-xs font-semibold text-stone-700 block mb-1">
                       Nombre y Apellido completo *
@@ -506,10 +536,17 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
 
                   <button
                     type="submit"
-                    disabled={!agreedToFollowup || applicantDni.length < 8 || applicantPhone.length < 8 || !applicantName.trim()}
-                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-sm py-3 rounded-xl shadow-md transition-colors"
+                    disabled={isSubmitting || !agreedToFollowup || applicantDni.length < 8 || applicantPhone.length < 8 || !applicantName.trim()}
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-extrabold text-sm py-3 rounded-xl shadow-md transition-colors flex items-center justify-center gap-2"
                   >
-                    Enviar Postulación al Refugio
+                    {isSubmitting ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        <span>Enviando postulación...</span>
+                      </>
+                    ) : (
+                      <span>Enviar Postulación al Refugio</span>
+                    )}
                   </button>
                 </form>
               </div>
