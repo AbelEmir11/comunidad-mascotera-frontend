@@ -1,41 +1,36 @@
 import { Pet, Shelter, CommunityNotice, Sponsor, AdoptionFollowup } from '@/types';
-import { MOCK_PETS, MOCK_SHELTERS, MOCK_NOTICES, MOCK_SPONSORS, MOCK_FOLLOWUPS } from '@/data/mockData';
+import { MOCK_SHELTERS, MOCK_NOTICES, MOCK_SPONSORS, MOCK_FOLLOWUPS } from '@/data/mockData';
+import { adaptAnimalToPet, AnimalBackendResponse } from './adapters';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 /**
  * Servicio de conexión con el Backend en Java Spring Boot.
- * Con fallback resiliente a mockData para garantizar que la app nunca se caiga
- * si el backend se está iniciando.
  */
 
 export async function fetchAnimals(species?: string): Promise<Pet[]> {
-  try {
-    const url = species && species !== 'todos' 
-      ? `${API_BASE_URL}/animales?especie=${encodeURIComponent(species)}`
-      : `${API_BASE_URL}/animales`;
-    
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    const data = await res.json();
-    return data.length > 0 ? data : MOCK_PETS;
-  } catch (err) {
-    console.warn('Backend Spring Boot no disponible aún en /api/animales, usando datos locales:', err);
-    return species && species !== 'todos'
-      ? MOCK_PETS.filter((p) => p.species === species)
-      : MOCK_PETS;
+  const url = species && species !== 'todos' 
+    ? `${API_BASE_URL}/animales?especie=${encodeURIComponent(species)}`
+    : `${API_BASE_URL}/animales`;
+  
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) {
+    throw new Error(`Error ${res.status}: No se pudo obtener el listado de animales del backend.`);
   }
+  const data: AnimalBackendResponse[] = await res.json();
+  return data.map(adaptAnimalToPet);
 }
 
-export async function fetchAnimalById(id: string): Promise<Pet | undefined> {
-  try {
-    const res = await fetch(`${API_BASE_URL}/animales/${id}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP error ${res.status}`);
-    return await res.json();
-  } catch (err) {
-    console.warn(`Backend Spring Boot no disponible en /api/animales/${id}, usando datos locales:`, err);
-    return MOCK_PETS.find((p) => p.id === id);
+export async function fetchAnimalById(id: string): Promise<Pet | null> {
+  const res = await fetch(`${API_BASE_URL}/animales/${id}`, { cache: 'no-store' });
+  if (res.status === 404) {
+    return null;
   }
+  if (!res.ok) {
+    throw new Error(`Error ${res.status}: No se pudo obtener el detalle del animal desde el backend.`);
+  }
+  const data: AnimalBackendResponse = await res.json();
+  return adaptAnimalToPet(data);
 }
 
 export async function fetchShelters(zone?: string): Promise<Shelter[]> {
