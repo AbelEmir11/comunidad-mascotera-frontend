@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, useEffect, use } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { MOCK_SHELTERS, MOCK_PETS } from '@/data/mockData';
+import { fetchAnimals } from '@/services/api';
+import { Pet } from '@/types';
 import PetCard from '@/components/PetCard';
 import { 
   ArrowLeft, 
@@ -31,7 +33,16 @@ export default function ShelterDetailPage({ params }: { params: Promise<{ id: st
     notFound();
   }
 
-  const shelterPets = MOCK_PETS.filter((p) => p.shelterId === shelter.id);
+  const [shelterPets, setShelterPets] = useState<Pet[]>(() => MOCK_PETS.filter((p) => p.shelterId === shelter.id));
+
+  useEffect(() => {
+    fetchAnimals().then((all) => {
+      const filtered = all.filter((p) => p.shelterId === shelter.id);
+      if (filtered.length > 0) {
+        setShelterPets(filtered);
+      }
+    }).catch(() => {});
+  }, [shelter.id]);
 
   const copyText = (text: string, isAlias: boolean) => {
     navigator.clipboard.writeText(text);

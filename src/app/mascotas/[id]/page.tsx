@@ -238,7 +238,7 @@ export default function PetDetailPage({ params }: { params: Promise<{ id: string
     name: pet.shelterName || 'Refugio Asociado',
     location: pet.shelterLocation || 'Mendoza, Argentina',
     logo: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=200&q=80',
-    whatsapp: '5492615554321',
+    whatsapp: '5492613670507',
   };
 
   return (
